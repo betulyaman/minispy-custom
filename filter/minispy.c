@@ -653,6 +653,8 @@ Return Value:
         FltReleaseFileNameInformation(nameInfo);
         return STATUS_UNSUCCESSFUL;
     }
+
+    // TODO: fltenumaratevolume
     UNICODE_STRING targetPath = RTL_CONSTANT_STRING(L"\\Device\\HarddiskVolume4\\ImportantData");
     if (RtlPrefixUnicodeString(&targetPath, &nameInfo->Name, TRUE)) {
         // Path matches: handle operation
@@ -915,8 +917,10 @@ Return Value:
             *CompletionContext = recordList;
             returnStatus = FLT_PREOP_SUCCESS_WITH_CALLBACK;
         }
+    }     
     }
-     
+    else {
+        return FLT_PREOP_SUCCESS_NO_CALLBACK;
     }
     return returnStatus;
 }

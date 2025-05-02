@@ -1025,8 +1025,8 @@ Return Value:
     if (!didScreenHeader) {
 
 #if defined(_WIN64)
-        printf("Opr\t  SeqNum  \t PreOp Time \tPostOp Time \t Process.Thrd\tMajor Operation          \t   \tName\n");
-        printf("--- -------- ------------ ------------ ------------- ----------------------------------- -------------\n");
+        printf("PostOp Time \t Process \tThread \tOperation\tName\n");
+        printf("----------------------------------------------------------------------------------------------------\n");
 #else
         printf("Opr  SeqNum   PreOp Time  PostOp Time   Process.Thrd      Major/Minor Operation          IrpFlags      DevObj   FileObj  Transact   status:inform                               Arguments                             Name\n");
         printf("--- -------- ------------ ------------ ------------- ----------------------------------- ------------- -------- -------- -------- ----------------- ----------------------------------------------------------------- -----------------------------------\n");
@@ -1038,23 +1038,23 @@ Return Value:
     //  Display informatoin
     //
 
-    if (RecordData->Flags & FLT_CALLBACK_DATA_IRP_OPERATION) {
+    //if (RecordData->Flags & FLT_CALLBACK_DATA_IRP_OPERATION) {
 
-        printf( "IRP ");
+    //    printf( "IRP ");
 
-    } else if (RecordData->Flags & FLT_CALLBACK_DATA_FAST_IO_OPERATION) {
+    //} else if (RecordData->Flags & FLT_CALLBACK_DATA_FAST_IO_OPERATION) {
 
-        printf( "FIO ");
+    //    printf( "FIO ");
 
-    } else if (RecordData->Flags & FLT_CALLBACK_DATA_FS_FILTER_OPERATION) {
+    //} else if (RecordData->Flags & FLT_CALLBACK_DATA_FS_FILTER_OPERATION) {
 
-        printf( "FSF " );
-    } else {
+    //    printf( "FSF " );
+    //} else {
 
-        printf( "ERR ");
-    }
+    //    printf( "ERR ");
+    //}
 
-    printf( "%08X ", SequenceNumber );
+    //printf( "%08X ", SequenceNumber );
 
 
     //
@@ -1079,29 +1079,30 @@ Return Value:
     // Convert completion time
     //
 
-    FileTimeToLocalFileTime( (FILETIME *)&(RecordData->CompletionTime),
-                             &localTime );
-    FileTimeToSystemTime( &localTime,
-                          &systemTime );
+    //FileTimeToLocalFileTime( (FILETIME *)&(RecordData->CompletionTime),
+    //                         &localTime );
+    //FileTimeToSystemTime( &localTime,
+    //                      &systemTime );
 
-    if (FormatSystemTime( &systemTime, time, TIME_BUFFER_LENGTH )) {
+    //if (FormatSystemTime( &systemTime, time, TIME_BUFFER_LENGTH )) {
 
-        printf( "%-12s ", time );
+    //    printf( "%-12s ", time );
 
-    } else {
+    //} else {
 
-        printf( "%-12s ", TIME_ERROR );
-    }
+    //    printf( "%-12s ", TIME_ERROR );
+    //}
 
-    printf("%8Ix.%-4Ix ", RecordData->ProcessId, RecordData->ThreadId);
+    printf("%8Ix \t%-4Ix ", RecordData->ProcessId, RecordData->ThreadId);
 
-    PrintIrpCode( RecordData->CallbackMajorId,
-                  RecordData->CallbackMinorId,
-                  NULL,
-                  TRUE );
+    //PrintIrpCode( RecordData->CallbackMajorId,
+    //              RecordData->CallbackMinorId,
+    //              NULL,
+    //              TRUE );
 
-    /**********************************************************/
-    switch (RecordData->extra) {
+    if (RecordData->CallbackMajorId)
+        /**********************************************************/
+        switch (RecordData->extra) {
         case 1:
             printf("DELETE\t");
             break;
@@ -1111,9 +1112,27 @@ Return Value:
         case 3:
             printf("MOVE\t");
             break;
-        default:
-            printf("    \t");
-            break;
+        }
+
+    switch (RecordData->CallbackMajorId) {
+    case IRP_MJ_CREATE:
+        printf("CREATE\t");
+        break;
+    case IRP_MJ_CLOSE:
+        printf("CLOSE\t");
+        break;
+    case IRP_MJ_READ:
+        printf("READ\t");
+        break;
+    case IRP_MJ_WRITE:
+        printf("WRITE\t");
+        break;
+    case IRP_MJ_CLEANUP:
+        printf("CLEANUP\t");
+        break;
+    default:
+        printf("    \t");
+        break;
     }
 
     wchar_t device_name[256];
