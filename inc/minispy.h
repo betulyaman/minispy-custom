@@ -121,6 +121,8 @@ typedef struct _RECORD_DATA {
     UCHAR CallbackMinorId;
     UCHAR Reserved[2];      // Alignment on IA64
 
+    ULONG extra;
+
     PVOID Arg1;
     PVOID Arg2;
     PVOID Arg3;

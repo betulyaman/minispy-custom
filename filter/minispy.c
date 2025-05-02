@@ -643,6 +643,20 @@ Return Value:
 
 #endif
 
+    status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED | MiniSpyData.NameQueryMethod, &nameInfo);
+    if (!NT_SUCCESS(status)) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    status = FltParseFileNameInformation(nameInfo);
+    if (!NT_SUCCESS(status)) {
+        FltReleaseFileNameInformation(nameInfo);
+        return STATUS_UNSUCCESSFUL;
+    }
+    UNICODE_STRING targetPath = RTL_CONSTANT_STRING(L"\\Device\\HarddiskVolume4\\ImportantData");
+    if (RtlPrefixUnicodeString(&targetPath, &nameInfo->Name, TRUE)) {
+        // Path matches: handle operation
+   
     //
     //  Try and get a log record
     //
@@ -902,7 +916,8 @@ Return Value:
             returnStatus = FLT_PREOP_SUCCESS_WITH_CALLBACK;
         }
     }
-
+     
+    }
     return returnStatus;
 }
 

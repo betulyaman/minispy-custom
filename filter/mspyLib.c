@@ -1099,9 +1099,70 @@ Return Value:
     recordData->DeviceObject    = (FILE_ID)devObj;
     recordData->FileObject      = (FILE_ID)FltObjects->FileObject;
     recordData->Transaction     = (FILE_ID)FltObjects->Transaction;
-    recordData->ProcessId       = (FILE_ID)PsGetCurrentProcessId();
-    recordData->ThreadId        = (FILE_ID)PsGetCurrentThreadId();
+    recordData->ProcessId       = (ULONG_PTR)PsGetProcessId(IoThreadToProcess(Data->Thread));
+    recordData->ThreadId        = (ULONG_PTR)PsGetThreadId(Data->Thread);
 
+    FILE_INFORMATION_CLASS file_information_class = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+
+    if (file_information_class == FileDispositionInformation ||
+        file_information_class == FileDispositionInformationEx) {
+
+        PFILE_DISPOSITION_INFORMATION file_information = (PFILE_DISPOSITION_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+        if (file_information->DeleteFile) {
+            // Deny delete operation
+            // Data->IoStatus.Status = STATUS_ACCESS_DENIED;
+            recordData->extra = 1; // DELETE
+        }
+    }
+    else if (file_information_class == FileRenameInformation ||
+        file_information_class == FileRenameInformationEx) {
+
+        PFILE_RENAME_INFORMATION rename_info = (PFILE_RENAME_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+        if (rename_info && rename_info->FileNameLength > 0) {
+
+            PFLT_FILE_NAME_INFORMATION source_name_info = NULL;
+            PFLT_FILE_NAME_INFORMATION dest_name_info = NULL;
+
+            // Get current (source) file name
+            status = FltGetFileNameInformation(Data,
+                FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_ALWAYS_ALLOW_CACHE_LOOKUP,
+                &source_name_info);
+            if (NT_SUCCESS(status)) {
+                FltParseFileNameInformation(source_name_info);
+
+                // Get destination (target) file name info
+                status = FltGetDestinationFileNameInformation(
+                    FltObjects->Instance,
+                    FltObjects->FileObject,
+                    rename_info->RootDirectory,
+                    rename_info->FileName,
+                    rename_info->FileNameLength,
+                    FLT_FILE_NAME_NORMALIZED | FLT_FILE_NAME_QUERY_ALWAYS_ALLOW_CACHE_LOOKUP,
+                    &dest_name_info);
+
+                if (NT_SUCCESS(status)) {
+                    FltParseFileNameInformation(dest_name_info);
+
+                    // Compare directories
+                    if (RtlEqualUnicodeString(&source_name_info->ParentDir, &dest_name_info->ParentDir, TRUE)) {
+                        recordData->extra = 2; // RENAME in the same folder
+                    }
+                    else {
+                        recordData->extra = 3; // MOVE across folders
+                    }
+
+                    FltReleaseFileNameInformation(dest_name_info);
+                }
+
+                FltReleaseFileNameInformation(source_name_info);
+            }
+        }
+
+    }
+    else {
+        recordData->extra = 0; // Not a delete/rename/move
+    }
+    
     recordData->Arg1 = Data->Iopb->Parameters.Others.Argument1;
     recordData->Arg2 = Data->Iopb->Parameters.Others.Argument2;
     recordData->Arg3 = Data->Iopb->Parameters.Others.Argument3;

@@ -22,14 +22,21 @@ _Analysis_mode_(_Analysis_code_type_user_code_)
 
 #include <stdio.h>
 #include <windows.h>
+#include <fileapi.h>
 #include <stdlib.h>
 #include <winioctl.h>
+#include <fltUser.h>
 #include "mspyLog.h"
 
 #define TIME_BUFFER_LENGTH 20
 #define TIME_ERROR         "time error"
 
 #define POLL_INTERVAL   200     // 200 milliseconds
+
+void split_device_and_path(const wchar_t* full_path,
+    wchar_t* device_name, size_t device_name_size,
+    wchar_t* remaining_path, size_t remaining_path_size);
+
 
 BOOLEAN
 TranslateFileTag(
@@ -356,68 +363,10 @@ Return Value:
             break;
         case IRP_MJ_READ:
             irpMajorString = IRP_MJ_READ_STRING;
-            switch (MinorCode) {
-                case IRP_MN_NORMAL:
-                    irpMinorString = IRP_MN_NORMAL_STRING;
-                    break;
-                case IRP_MN_DPC:
-                    irpMinorString = IRP_MN_DPC_STRING;
-                    break;
-                case IRP_MN_MDL:
-                    irpMinorString = IRP_MN_MDL_STRING;
-                    break;
-                case IRP_MN_COMPLETE:
-                    irpMinorString = IRP_MN_COMPLETE_STRING;
-                    break;
-                case IRP_MN_COMPRESSED:
-                    irpMinorString = IRP_MN_COMPRESSED_STRING;
-                    break;
-                case IRP_MN_MDL_DPC:
-                    irpMinorString = IRP_MN_MDL_DPC_STRING;
-                    break;
-                case IRP_MN_COMPLETE_MDL:
-                    irpMinorString = IRP_MN_COMPLETE_MDL_STRING;
-                    break;
-                case IRP_MN_COMPLETE_MDL_DPC:
-                    irpMinorString = IRP_MN_COMPLETE_MDL_DPC_STRING;
-                    break;
-                default:
-                    sprintf_s(errorBuf,sizeof(errorBuf),"Unknown Irp minor code (%u)",MinorCode);
-                    irpMinorString = errorBuf;
-            }
             break;
 
         case IRP_MJ_WRITE:
             irpMajorString = IRP_MJ_WRITE_STRING;
-            switch (MinorCode) {
-                case IRP_MN_NORMAL:
-                    irpMinorString = IRP_MN_NORMAL_STRING;
-                    break;
-                case IRP_MN_DPC:
-                    irpMinorString = IRP_MN_DPC_STRING;
-                    break;
-                case IRP_MN_MDL:
-                    irpMinorString = IRP_MN_MDL_STRING;
-                    break;
-                case IRP_MN_COMPLETE:
-                    irpMinorString = IRP_MN_COMPLETE_STRING;
-                    break;
-                case IRP_MN_COMPRESSED:
-                    irpMinorString = IRP_MN_COMPRESSED_STRING;
-                    break;
-                case IRP_MN_MDL_DPC:
-                    irpMinorString = IRP_MN_MDL_DPC_STRING;
-                    break;
-                case IRP_MN_COMPLETE_MDL:
-                    irpMinorString = IRP_MN_COMPLETE_MDL_STRING;
-                    break;
-                case IRP_MN_COMPLETE_MDL_DPC:
-                    irpMinorString = IRP_MN_COMPLETE_MDL_DPC_STRING;
-                    break;
-                default:
-                    sprintf_s(errorBuf,sizeof(errorBuf),"Unknown Irp minor code (%u)",MinorCode);
-                    irpMinorString = errorBuf;
-            }
             break;
 
         case IRP_MJ_QUERY_INFORMATION:
@@ -822,15 +771,6 @@ Return Value:
 
     if (OutputFile) {
 
-        if (irpMinorString) {
-
-            fprintf(OutputFile, "\t%-35s\t%-35s", irpMajorString, irpMinorString);
-
-        } else {
-
-            fprintf(OutputFile, "\t%-35s\t                                   ", irpMajorString);
-        }
-
     } else {
 
         if (PrintMajorCode) {
@@ -841,7 +781,7 @@ Return Value:
 
             if (irpMinorString) {
 
-                printf("                                                                     %-35s\n",
+                printf(" %-35s\n",
                         irpMinorString);
             }
         }
@@ -1085,8 +1025,8 @@ Return Value:
     if (!didScreenHeader) {
 
 #if defined(_WIN64)
-        printf("Opr  SeqNum   PreOp Time  PostOp Time   Process.Thrd      Major/Minor Operation          IrpFlags          DevObj           FileObj          Transact       status:inform                               Arguments                                                                             Name\n");
-        printf("--- -------- ------------ ------------ ------------- ----------------------------------- ------------- ---------------- ---------------- ---------------- ------------------------- --------------------------------------------------------------------------------------------------------- -----------------------------------\n");
+        printf("Opr\t  SeqNum  \t PreOp Time \tPostOp Time \t Process.Thrd\tMajor Operation          \t   \tName\n");
+        printf("--- -------- ------------ ------------ ------------- ----------------------------------- -------------\n");
 #else
         printf("Opr  SeqNum   PreOp Time  PostOp Time   Process.Thrd      Major/Minor Operation          IrpFlags      DevObj   FileObj  Transact   status:inform                               Arguments                             Name\n");
         printf("--- -------- ------------ ------------ ------------- ----------------------------------- ------------- -------- -------- -------- ----------------- ----------------------------------------------------------------- -----------------------------------\n");
@@ -1160,34 +1100,73 @@ Return Value:
                   NULL,
                   TRUE );
 
-    //
-    // Interpret set IrpFlags
-    //
+    /**********************************************************/
+    switch (RecordData->extra) {
+        case 1:
+            printf("DELETE\t");
+            break;
+        case 2:
+            printf("RENAME\t");
+            break;
+        case 3:
+            printf("MOVE\t");
+            break;
+        default:
+            printf("    \t");
+            break;
+    }
 
-    printf( "%08lx ", RecordData->IrpFlags );
-    printf( "%s", (RecordData->IrpFlags & IRP_NOCACHE) ? "N":"-" );
-    printf( "%s", (RecordData->IrpFlags & IRP_PAGING_IO) ? "P":"-" );
-    printf( "%s", (RecordData->IrpFlags & IRP_SYNCHRONOUS_API) ? "S":"-" );
-    printf( "%s ", (RecordData->IrpFlags & IRP_SYNCHRONOUS_PAGING_IO) ? "Y":"-" );
+    wchar_t device_name[256];
+    wchar_t remaining_path[256];
 
-    printf( "%08p ", (PVOID) RecordData->DeviceObject );
-    printf( "%08p ", (PVOID) RecordData->FileObject );
-    printf( "%08p ", (PVOID) RecordData->Transaction );
-    printf( "%08lx:%p ", RecordData->Status, (PVOID)RecordData->Information );
+    split_device_and_path(Name, device_name, 256, remaining_path, 256);
 
-    printf( "1:%p 2:%p 3:%p 4:%p 5:%p 6:%08I64x ",
-            RecordData->Arg1,
-            RecordData->Arg2,
-            RecordData->Arg3,
-            RecordData->Arg4,
-            RecordData->Arg5,
-            RecordData->Arg6.QuadPart );
+    wchar_t dos_path[256];
+    HRESULT result = FilterGetDosName(device_name, dos_path, 256);
+    if (result != S_OK) {
+        printf("%S", Name);
+    }
+    else {
+        printf( "%S%S", dos_path, remaining_path);
+        printf( "\n" );
+    }
 
-    printf( "%S", Name );
-    printf( "\n" );
     PrintIrpCode( RecordData->CallbackMajorId,
                   RecordData->CallbackMinorId,
                   NULL,
                   FALSE );
 }
 
+
+void split_device_and_path(const wchar_t* full_path,
+    wchar_t* device_name, size_t device_name_size,
+    wchar_t* remaining_path, size_t remaining_path_size)
+{
+    int slash_count = 0;
+    const wchar_t* ptr = full_path;
+
+    while (*ptr) {
+        if (*ptr == L'\\') {
+            slash_count++;
+            if (slash_count == 3) {
+                break;
+            }
+        }
+        ptr++;
+    }
+
+    if (slash_count < 3) {
+        wcsncpy(device_name, full_path, device_name_size - 1);
+        device_name[device_name_size - 1] = L'\0';
+        remaining_path[0] = L'\0';
+        return;
+    }
+
+    size_t deviceLen = ptr - full_path;
+    if (deviceLen >= device_name_size) deviceLen = device_name_size - 1;
+    wcsncpy(device_name, full_path, deviceLen);
+    device_name[deviceLen] = L'\0';
+
+    wcsncpy(remaining_path, ptr, remaining_path_size - 1);
+    remaining_path[remaining_path_size - 1] = L'\0';
+}
